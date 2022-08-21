@@ -1895,3 +1895,103 @@ To employ SSH, your users must be able to make outbound TCP connections: and rea
 The only things that keep people from violating your security policy with this access, aside from respecting the policy itself, are ignorance and inconvenience. Your users might not know how to play any of the preceding tricks, or it might be too much trouble if they do. SSH, however, makes some of these things very easy: tunneling outbound connections to “forbidden” TCP ports, reverse forwarding to tunnel back through your firewall and circumvent it, etc...and everything nicely encrypted so that you can’t see what’s happening!
 
 The important lesson here is not that SSH is dangerous, but that truly limiting network access is a very difficult proposition: usually impossible, in fact, with any kind of reasonable effort (and if you want to get any other work done). When there are convenient tools like SSH lying around tempting people to get around annoying limitations, you can no longer rely on ignorance and inconvenience to enforce your security policy. Ultimately, you must gain the trust and cooperation of your users to have an effective security policy.
+
+# 4. Installation and Compile-Time Configuration
+
+## Binary or source distribution
+
+The first question to consider when installing any implementation of SSH is whether to use a binary or source distribution.
+
+Binary distributions are already configured and compiled, and are therefore easy to use. They are available for popular SSH implementations like OpenSSH and Tectia on a variety of common platforms. The packaging technology and installation instructions vary according to the target system—consult the documentation provided by your vendor for details. For example, on Linux systems, binary distributions are usually shipped as RPM packages, and can be installed using a single command like:
+
+```bash
+$ rpm -Uhv openssh-3.9p1-1.i386.rpm
+```
+
+Installation on Unix systems typically requires root access, to install files in system directories, and to update the databases that keep track of installed packages.
+
+Binary distributions are often cryptographically signed, to ensure that no one has tampered with the files. Signatures can be provided as separate files, or (depending on the package format) embedded within the binary distribution files, and the technique to verify the signature depends on how the files were signed. For example, on RPM-based Linux systems, first import the vendor’s public key, which is distributed by keyservers or the vendor’s web site:
+
+```bash
+$ rpm --import http://www.redhat.com/security/db42a60e.txt
+```
+
+Then use the public key to check the signature:
+
+```bash
+$ rpm --checksig -v openssh-3.9p1-1.i386.rpm
+```
+
+Always check the signatures of binary distributions before installing. Imagine the havoc that could be caused if a maliciously hacked version of SSH was unwittingly used on your system.
+
+Source distributions require more work to install, but allow many more configuration options. They can also be used on platforms for which no binary distributions are available.
+
+## Perform Compile-Time Configuration
+
+Most SSH implementations have dozens of configuration options you can set at compile time. It’s a good idea to carefully consider each one, instead of blindly accepting the defaults. In fact, the flexibility provided by this compile-time configuration process is a primary motivation for installing from source distributions.
+
+Compile-time configuration is performed by running a script named configure that is usually found in the top-level source directory.* Roughly speaking, the configure script accomplishes two tasks:
+
+* It examines the local system, setting various platform-specific and operatingsystem- specific options. For example, configure notices which header files and libraries are available and whether your C compiler is ANSI or not. It does this by compiling and running a series of carefully constructed, small test programs, examining system files, etc. This happens automatically in most cases, so you can just sit back and watch the script announce what it discovers as it runs.
+* It includes or excludes certain features found in the SSH source code. For example, configure can keep or remove support for Kerberos authentication.
+
+We’ll discuss only the second task, since it’s SSH-specific, and cover only the configuration options that are directly related to SSH or security. For example, we won’t cover options that relate to the compiler (e.g., whether warnings should be printed or suppressed) or operating system (e.g., whether particular Unix library functions should be used). To see the full set of configure options, use the command:
+
+```bash
+$ configure --help
+```
+
+Also, read the installation documentation, which is often found in files named README and INSTALL in the source directory.
+
+The behavior of SSH servers can be controlled at three levels. The first is compiletime configuration as discussed in this chapter. In addition, serverwide configuration (Chapter 5) controls global settings for a running SSH server, and per-account configuration (Chapter 8) controls settings for each user account accepting SSH connections. Figure 4-1 illustrates where compile-time configuration fits into the whole spectrum. We’ll remind you of this picture each time we introduce a new type of configuration.
+
+![Figure-4-1](ScreenshotsForNotes/Chapter4/Figure_4_1.PNG)
+
+Compile-time configuration affects both the SSH server and client programs. Changing the configuration requires recompiling and reinstalling, which is neither easy nor convenient, so for most aspects of server and client operation, it’s more appropriate to edit configuration files after installation. Nevertheless, there are some good reasons to use compile-time configuration:
+
+* Some configuration options can only be set at compile time.
+* Features that are disabled at compile time can’t be accidentally enabled by erroneous configuration files. Inflexibility can be an asset.
+* Removing code for unused features improves security—you can’t be burned by security holes in code that you don’t compile!
+* Similarly, code removal sometimes yields a performance advantage, since less memory and disk space is used.
+
+The configure script accepts command-line flags, each beginning with a double dash (--), to control its actions. Flags are of two types:
+
+* *With/without flags*
+    * Include a package during compilation. These flags begin with --with or --without. For example, support for the X Window System can be included using the flag --with-x and omitted using --without-x.
+* *Enable/disable flags*
+    * Set the default behavior of SSH. These flags begin with --enable or --disable. For example, the X forwarding feature in Tectia is enabled by the flag --enable- X11-forwarding or disabled with --disable-X11-forwarding. Some of these defaults can be overridden later by serverwide or per-account configuration.
+
+Flags beginning with --with or --enable may optionally be followed by an equals sign and a string value, such as:
+
+```
+--with-etcdir=/usr/local/etc
+--enable-X11-forwarding=no
+```
+
+Various string values are used, but the most common are yes and no. For a given package P, the flags --with-P and --with-P =yes are equivalent. The following table illustrates the relationship:
+
+![Figure-4-x](ScreenshotsForNotes/Chatper4/Figure_4_x.PNG)
+
+## Software Inventory
+
+Table 4-1 provides a reference to the many files and programs installed with SSH.
+
+![Table-4-1-1](ScreenshotsForNotes/Chapter4/Table_4_1_1.PNG) ![Table-4-1-2](ScreenshotsForNotes/Chapter4/Table_4_1_2.PNG)
+
+## Replacing r-Commands with SSH
+
+SSH and the r-commands (rsh, rcp, rlogin) can coexist peacefully on the same machine. Since the r-commands are insecure, however, system administrators should replace them by their SSH counterparts (ssh, scp, slogin). This replacement has two parts:
+
+* Installing SSH and removing rsh, rcp, and rlogin; requires some user retraining
+* Modifying other programs or scripts that invoke the r-commands
+
+The r-commands are so similar to their analogous SSH commands, you might be tempted to rename the SSH commands as the r-commands (e.g., rename ssh as rsh, etc.). After all, common commands like these are practically identical in syntax:
+
+```bash
+$ rsh -l jones remote.example.com
+$ ssh -l jones remote.example.com
+$ rcp myfile remote.example.com:
+$ scp myfile remote.example.com:
+```
+
+Why not just rename? Well, the two sets of programs are incompatible in some ways. For example, some old versions of rcp use a different syntax for specifying remote filenames.
