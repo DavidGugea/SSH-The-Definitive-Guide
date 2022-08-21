@@ -1970,7 +1970,7 @@ Flags beginning with --with or --enable may optionally be followed by an equals 
 
 Various string values are used, but the most common are yes and no. For a given package P, the flags --with-P and --with-P =yes are equivalent. The following table illustrates the relationship:
 
-![Figure-4-x](ScreenshotsForNotes/Chatper4/Figure_4_x.PNG)
+![Figure-4-x](ScreenshotsForNotes/Chapter4/Figure_4_x.PNG)
 
 ## Software Inventory
 
