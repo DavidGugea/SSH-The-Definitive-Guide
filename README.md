@@ -1995,3 +1995,7 @@ $ scp myfile remote.example.com:
 ```
 
 Why not just rename? Well, the two sets of programs are incompatible in some ways. For example, some old versions of rcp use a different syntax for specifying remote filenames.
+
+# 5. Serverwide Configuration
+
+\-
