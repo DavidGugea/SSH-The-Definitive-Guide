@@ -1999,3 +1999,512 @@ Why not just rename? Well, the two sets of programs are incompatible in some way
 # 5. Serverwide Configuration
 
 \-
+
+# 6. Key Management and Agents
+
+## Introduction
+
+Your SSH private key is a precious thing. When you use public-key authentication, your key proves your identity to SSH servers. We’ve encountered several programs related to keys:
+
+* ```ssh-keygen```
+    * Creates key pairs
+* ```ssh-agent```
+    * Holds private keys in memory, saving you from typing your passphrase repeatedly
+* ```ssh-add```
+    * Loads private keys into the agent
+
+However, we haven’t gone into much depth, covering only the most basic operations with keys. Now it’s time to examine these concepts and programs in detail.
+
+## What is an identity?
+
+An SSH identity is a sequence of bits that says, “I am really me.” It is a mathematical construct that permits an SSH client to prove itself to an SSH server, so the SSH server says, “Ah, I see, it’s really you. You are hereby authenticated. Come in.”
+
+![Figure](ScreenshotsForNotes/Chapter6/Figure_6_1.PNG)
+
+An identity consists of two parts, called the private key and the public key. Together, they are known as a key pair.
+
+The private key represents your identity for outgoing SSH connections. When you run an SSH client in your account, such as ssh or scp, and it requests a connection with an SSH server, the client uses this private key to prove your identity to the server.
+
+*Private keys must be kept secret*. An intruder with your private key can access your account as easily as you can.
+
+The public key represents your identity for incoming connections to your account. When an SSH client requests access to your account, using a private key as proof of identity, the SSH server examines the corresponding public key. If the keys “match” (according to a cryptographic test), authentication succeeds and the connection proceeds. Public keys don’t need to be secret; they can’t be used to break into an account.
+
+A key pair is typically stored in a pair of files with related names. In SSH, the publickey filename is the same as the private one, but with the suffix .pub added. For example, if the file mykey holds a  private key, its corresponding public key is found in mykey.pub. You may have as many SSH identities as you like. Most SSH implementations let you specify a default identity clients use unless told otherwise. To use an alternative identity, you must change a setting by command-line argument, configuration file, or some other configuration tool.
+
+The structure of identity files differs for OpenSSH and Tectia, so we explain them separately. Their locations in the filesystem are shown in Figures 6-2 (private keys) and 6-3 (public keys).
+
+![Figure](ScreenshotsForNotes/Chapter6/Figure_6_2.PNG) ![Figure](ScreenshotsForNotes/Chapter6/Figure_6_3.PNG)
+
+## OpenSSH Identities
+
+An OpenSSH identity is stored in two files. By default, the private key is stored in the file id_dsa, and the public key in id_dsa.pub.* This key pair, which is kept in your ~/.ssh directory, is your default identity that clients use unless told otherwise. The private key looks something like this:
+
+```
+-----BEGIN DSA PRIVATE KEY----- Or “BEGIN RSA” for RSA keys
+Proc-Type: 4,ENCRYPTED
+DEK-Info: DES-EDE3-CBC,89C3AE51BC5876FD
+MXZJgnkYE+1+eff3yt9j/aCCABz75egbGJfAbWrseiu0k3Dim9Teu2Ob1Xjdv4U9
+II1hVYOkgQYuhdJbzrLMpJ0W1+N5ujI8akJ6j0ESeGTwJbhGyst71Y3A2+w4m1iv
+
+... lines omitted ...
+gMtQSdL26V1+EmGiPfio8Q==
+-----END DSA PRIVATE KEY-----
+```
+
+and the public key file contains a long, single line:
+
+```ssh-dss AAAAB3NzaC1kc3MAAACBAM4a2KKBE6zhPBgR ...more... smith@example.com```
+
+The file format for these keys is known as “OpenSSH format.”
+
+The .pub file containing your public key has no function by itself. Before it can be used for authentication, this public key must be copied into an authorization file on an SSH server machine, ~/.ssh/authorized_keys. Thereafter, when an SSH client requests a connection to your server account using a private key as proof of identity, the OpenSSH server consults your authorized_keys file to find the matching public key.
+
+## Creating an identity
+
+## Creating OpenSSH Keys
+
+When creating a new key, you must indicate the key type (DSA or RSA) using the –t flag:
+
+You may also specify these options for creating keys:
+
+* The number of bits in the key, using –b; the default is 1024 bits: ```$ ssh-keygen -t dsa -b 2048```
+* The name of the private-key file to be generated, using –f. The name is relative to your current directory. Recall that the public-key file is named after the private one with .pub appended.
+
+```$ ssh-keygen -t dsa -f mykey``` Creates mykey and mykey.pub
+
+If you omit the –f option, you are prompted for the information:
+
+```$ ssh-keygen -t dsa```
+
+Enter file in which to save the key (/home/barrett/.ssh/id_dsa): mykey The default filename for DSA keys is ~/.ssh/id_dsa, and for RSA keys it’s ~/.ssh/ id_rsa.
+
+* The passphrase to decode the key, using –N:
+
+```$ ssh-keygen -t dsa -N secretword```
+
+If you omit this option, you’ll be prompted for the information:
+
+```
+$ ssh-keygen -t dsa
+...
+Enter passphrase: [nothing is echoed]
+Enter the same passphrase again: [nothing is echoed]
+```
+
+* A textual comment associated with the key, using –C. If you omit this option, the comment is username@host, where username is your username and host is the local hostname:
+
+```$ ssh-keygen ... -C "my favorite key"```
+
+Before using any option that places your passphrase on the shell command line, such as the –N or –P options of ssh-keygen, carefully consider the security implications. Because the passphrase appears on your screen, it may be visible to onlookers, and while running, it may be visible to other users viewing the machine’s process list via the ps command. In addition, if your shell creates history files of the commands you type, the passphrase is inserted into a history file where it can be read by a third party.
+
+Also, if you think you have a good reason just to type Return and give your key no passphrase, think again. That is essentially equivalent to putting your password in a file in your home directory named MYPASSWORD. PLEASE-STEAL-ME. If you don’t want to have to type a passphrase, the right thing to do is to use ssh-agent, hostbased authentication, or Kerberos. There are very limited circumstances having to do with unattended usage (e.g., cron jobs) where a plaintext, passphrase- less client key might be acceptable.
+
+If you use both –f (specify output file) and –N (specify passphrase), ssh-keygen issues no prompts. Therefore, you can automate key generation using these options (and perhaps redirecting output to /dev/null):
+
+```$ ssh-keygen -f mykey -N secretword```
+
+You might use this technique to automate generation of a large number of keys for some purpose. Use it carefully, though, and always on a secure machine. The password on the command line is probably visible to other users on the same machine via ps or similar programs; and if you’re scripting with this technique, obviously the passphrases shouldn’t be kept in files for long.
+
+## Working with OpenSSH Keys
+
+In addition to creating keys, ssh-keygen can manipulate existing keys in the following ways:
+
+* Changing the passphrase of an existing key, using –p. You can specify the filename with –f and the old and new passphrases with –P and –N, respectively:
+
+```
+$ ssh-keygen -t dsa -p -f mykey -P secretword -N newword
+Your identification has been saved with the new passphrase.
+```
+
+But if you omit them, you are prompted:
+
+```
+$ ssh-keygen -t dsa -p
+Enter file in which the key is (/home/barrett/.ssh/id_rsa): mykey
+Enter old passphrase: [nothing is echoed]
+Key has comment 'my favorite key'
+Enter new passphrase (empty for no passphrase): [nothing is echoed]
+Enter the same passphrase again:
+Your identification has been saved with the new passphrase.
+```
+
+***Note that this changes the passphrase but doesn’t change the key***, it just reencrypts the key with the new passphrase. So, the corresponding public-key file on remote machines doesn’t change or need to be replaced.
+
+* Printing the fingerprint of a given key file, with –l. See the sidebar “Key Fingerprints” for more information. The fingerprint can be calculated from the public key:
+
+```
+$ ssh-keygen -l -f stevekey.pub
+1024 5c:f6:e2:15:39:14:1a:8b:4c:93:44:57:6b:c6:f4:17 steve@snailbook.com
+$ ssh-keygen -B -f stevekey.pub
+1024 xitot-larit-gumet-fyfim-sozev-vyned-cigeb-sariv-tekuk-badus-bexax
+Steve@snailbook.com
+```
+
+* Printing a DNS resource record with –r, and using DNS resource record format with –g. These options produce key fingerprints in a format suitable for a BIND nameserver, for the purposes of verifying SSH host keys via the DNS. [7.4.3.2]
+
+* Converting between SECSH (Tectia) and OpenSSH key-storage formats, with –e, –i, and –y.
+
+![Figure](ScreenshotsForNotes/Chapter6/Table_6_1.PNG)
+
+An OpenSSH “private” key file actually contains both the public and private keys of a pair, so the –e and –y options simply extract the public key and print it out in the desired format. Use –e to convert an OpenSSH public key for your ~/.ssh2/ authorization file on a Tectia server host, and –i to do the opposite. The –y option is useful if you accidentally delete your OpenSSH public-key file and need to restore it. Tectia keys are in a format called SECSH Public Key File Format or SSH2 format, also used by other SSH implementations whose keys you may import and export.
+
+A function that’s missing is converting the private keys as well. This is useful if you have an OpenSSH server host on which you also want to run Tectia, and you want the two SSH servers to share a host key.
+
+When you make changes to a key, such as its passphrase or comment, the changes are applied to the key file only. If you have keys loaded in an SSH agent, the copies in the agent don’t get changed. For instance, if you list the keys in the agent with ssh-add -l (lowercase L) after changing the comment, you still see the old comment in the agent. To make the changes take effect in the agent, unload and reload the affected keys.
+
+## Key Fingerprints
+
+Fingerprints are a common cryptographic feature for checking that two keys in different places are the same, when comparing them literally—bit by bit—is infeasible. OpenSSH and Tectia can compute fingerprints.
+
+Suppose Steve wants SSH access to Judy’s account. He sends his public key to Judy by email, and she installs it in her SSH authorization file. While this key exchange seems straightforward, it is insecure: a hostile third party could intercept Steve’s key and substitute his own, gaining access to Judy’s account.
+
+To prevent this risk, Judy needs some way to verify that the key she receives is Steve’s. She can call Steve on the telephone and check, but reading a 500-byte encrypted public key over the phone is annoying and error-prone. This is why fingerprints exist.
+
+A fingerprint is a short value computed from a key. It’s analogous to a checksum, verifying that a string of data is unaltered—in our case, a key. To check the validity of a key using fingerprints, Steve and Judy could do the following:
+
+1. Judy receives a public key that is supposed to be Steve’s, storing it in the file stevekey.pub.
+2. Separately, Judy and Steve view the fingerprint of the key:
+
+```
+# OpenSSH
+$ ssh-keygen -l -f stevekey.pub
+1024 5c:f6:e2:15:39:14:1a:8b:4c:93:44:57:6b:c6:f4:17 Steve@snailbook.com
+$ ssh-keygen -B -f stevekey.pub
+1024 xitot-larit-gumet-fyfim-sozev-vyned-cigeb-sariv-tekuk-badus-bexax
+Steve@snailbook.com
+
+# Tectia
+$ ssh-keygen -F stevekey.pub
+Fingerprint for key:
+xitot-larit-gumet-fyfim-sozev-vyned-cigeb-sariv-tekuk-badus-bexax
+```
+
+3. Judy calls Steve on the telephone and asks him to read the fingerprint over the phone. Judy verifies that it matches the fingerprint of the key she received. Fingerprints are not unique, but for any two keys, the probability that their fingerprints are identical is extremely small. Therefore, fingerprints are a quick and convenient method for checking that a key is unaltered.
+
+As you can see, OpenSSH and Tectia use different output formats for fingerprints. OpenSSH supports both a numeric format which is more traditional and should be familiar to users of PGP, and a textual format called “Bubble Babble” which is claimed to be easier to read and remember. Tectia supports only Bubble Babble fingerprints.
+
+Fingerprints also surface when you connect to an SSH server whose host key has changed. In this case, OpenSSH prints a warning message and the fingerprint of the new key, which may be conveniently compared with the fingerprint of the real host key, should you have it.
+
+## ssh-keygen options
+
+![Table](ScreenshotsForNotes/Chapter6/ssh_keygen_options_1.PNG) ![Table](ScreenshotsForNotes/Chapter6/ssh_keygen_options_2.PNG)
+
+## Selecting a Passphrase
+
+Choose your passphrases carefully. Make them at least 10 characters long, containing a mix of uppercase and lowercase letters, digits, and nonalphanumeric symbols. At the same time, you want the passphrase to be easy to remember, but hard for others to guess. Don’t use your name, username, phone number, or other easily guessedinformation in the passphrase. Coming up with an effective passphrase can be a chore, but the added security is worth it.
+
+If you forget a passphrase, you are out of luck: the corresponding SSH private key becomes unusable because you can’t decrypt it. The same encryption that makes SSH so secure also makes passphrases impossible to recover. You have to abandon your SSH key, generate a new one, and choose a new passphrase for it. You must also install the new public key on every machine that holds the original one.
+
+## SSH Agents
+
+An SSH agent is a program that caches private keys and responds to authenticationrelated queries from SSH clients. [2.5] They are terrific labor-saving devices, handling all key-related operations and eliminating the need to retype your passphrase.
+
+The programs related to agents are ssh-agent and ssh-add. ssh-agent runs an agent, and ssh-add inserts and removes keys from the agent’s key cache. A typical use might look like this:
+
+```
+# Start the agent
+$ ssh-agent $SHELL
+# Load your default identity
+$ ssh-add
+Need passphrase for /home/barrett/.ssh/identity (barrett@example.com).
+Enter passphrase: ********
+```
+
+By typing your passphrase a single time, you decrypt the private key which is then stored in memory by the agent. From now on, until you terminate the agent or log out, SSH clients automatically contact the agent for all key-related operations. You needn’t type your passphrase again.
+
+## Agents do not expose keys
+
+Agents perform two tasks:
+
+* Store your private keys in memory
+* Answer questions (from SSH clients) about those keys
+
+Agents don’t, however, send your private keys anywhere. This is important to understand. Once loaded, private keys remain within an agent, unseen by SSH clients. To access a key, a client says, “Hey agent! I need your help. Please perform a key-related operation for me.” The agent obeys and sends the results to the client, as in Figure 6-4.
+
+![Figure](ScreenshotsForNotes/Chapter6/Figure_6_4.PNG)
+
+For example, if ssh needs to sign an authenticator, it sends the agent a signing request containing the authenticator data and an indication of which key to use. The agent performs the cryptographic operation itself and returns the signature.
+
+In this manner, SSH clients use the agent without seeing its private keys. This technique is more secure than handing out keys to clients. The fewer places that private keys get stored or sent, the harder it is to steal them.
+
+## Loading Keys with ssh-add
+
+For example, if ssh needs to sign an authenticator, it sends the agent a signing request containing the authenticator data and an indication of which key to use. The agent performs the cryptographic operation itself and returns the signature. In this manner, SSH clients use the agent without seeing its private keys. This technique is more secure than handing out keys to clients. The fewer places that private keys get stored or sent, the harder it is to steal them.
+
+If you invoke ssh-add with no arguments, your default SSH keys are loaded into the agent, once you have typed their passphrases.* For example:
+
+```
+# Output shown for OpenSSH
+$ ssh-add
+Enter passphrase for /home/smith/.ssh/id_dsa: ********
+Identity added: /home/smith/.ssh/id_dsa
+```
+
+Normally, ssh-add reads the passphrase from the user’s terminal. If the standard input isn’t a terminal, however, and the DISPLAY environment variable is set, ssh-add instead invokes an X Window graphical program called ssh-askpass or x11-ssh-askpass that pops up a window to read your passphrase. This is especially convenient in xdm startup scripts.
+
+ssh-add supports the following command-line options for listing and deleting keys, and for reading the passphrase:
+
+* List all identities loaded in the agent. OpenSSH lists the key fingerprints with –l (see the earlier sidebar “Key Fingerprints” for more detail):
+
+```
+# OpenSSH
+$ ssh-add -l
+1024 e9:39:50:f0:b4:65:ba:b9:d7:d3:69:10:d0:23:a7:88 a (DSA)
+1024 7c:91:07:29:46:a8:61:b4:7c:95:69:fc:47:1e:3c:ff b (RSA)
+```
+
+*  To print the public keys held in the OpenSSH agent, use –L:
+
+```
+# OpenSSH
+$ ssh-add -L
+ssh-dss AAAAB3NzaC1kc3MAAACBAK5ArDaZyPXa5Iz... and so forth
+ssh-rsa AAAAB3NzaC1yc2EAAAABIwAAAIEAtIgHblLp1i... and so forth
+```
+
+* Tectia lists brief information about the loaded keys with –l:
+
+```
+# Tectia
+$ ssh-add -l
+Listing identities.
+The authorization agent has two keys:
+id_dsa_2048_a: my main key
+id_dsa_2048_b: another key
+```
+
+* Delete an identity from the agent, with –d:
+
+```
+$ ssh-add -d ~/.ssh/second_id
+Identity removed: /home/smith/.ssh/second_id (second_id.pub)
+```
+
+If you don’t specify a key file, ssh-add deletes your default identity from the agent:
+
+```
+$ ssh-add -d
+Identity removed: /home/smith/.ssh/id_dsa (/home/smith/.ssh/id_dsa.pub)
+```
+
+* Delete all identities from the agent, with –D; this unloads every currently loaded key but leaves the agent running:
+
+```
+# OpenSSH
+$ ssh-add -D
+All identities removed.
+
+# Tectia
+$ ssh-add -D
+Deleting all identities.
+```
+
+* Set a timeout for a key, with –t. Normally when you add a key, it remains loaded in the agent indefinitely, until the agent terminates or you unload the key manually. The –t option assigns a lifetime to a key, measured in seconds (OpenSSH) or minutes (Tectia). After this time has passed, the agent automatically unloads the key:
+
+```$ ssh-add -t 30 mykey```
+
+OpenSSH has a richer syntax for specifying times that may also be used here; see the sidebar “Time Values in Configuration Files” in Chapter 5:
+
+```
+# OpenSSH
+$ ssh-add -t 3W mykey Set a key lifetime of three weeks
+```
+
+You can also specify the maximum lifetime for all keys in the agent:
+
+```
+# OpenSSH
+$ eval 'ssh-agent -t 3W' All keys in the agent have a lifetime of three weeks or less
+```
+
+* Lock and unlock the agent with a password, using –x and –X (OpenSSH) or –L and –U (Tectia). A locked agent refuses all ssh-add operations except an unlock request. If you try to modify the state of the agent (adding or deleting keys, etc.), the operation is rejected, and if you try to list the agent’s keys, you are told the agent has no keys.
+
+To lock:
+
+```
+# OpenSSH
+$ ssh-add -x
+Enter lock password: ****
+Again: ****
+Agent locked
+
+# Tectia
+$ ssh-add -L
+Enter lock password: ****
+Again: ****
+```
+
+and to unlock:
+
+```
+# OpenSSH
+ssh-add -X
+Enter lock password: ****
+Agent unlocked
+
+# Tectia
+$ ssh-add -U
+Enter lock password: ****
+```
+
+Locking is a convenient way to protect the agent if you step away from your computer but leave yourself logged in. You can instead unload all your keys with ssh-add -D, but then you have to reload them again when you return. If you have only one key there’s no difference, but if you use several it’s a pain. Unfortunately, both OpenSSH and Tectia’s locking mechanism aren’t tremendously secure. ssh-agent simply stores the lock password in memory, refusing to honor any more requests until it receives an unlock message containing the same password. The locked agent is still vulnerable to attack: if an intruder gains access to your account (or the root account), he can dump the agent’s process address space and extract your keys. The lock feature certainly deters casual misuse, but the potential for an attack is real. If you’re seriously concerned about key disclosure, think twice before relying on locking. We prefer to see this feature implemented by encrypting all the agent’s loaded keys with the lock password. This gives the same user convenience and provides better protection
+
+OpenSSH’s ssh-add program can also be forced to confirm identities via ssh-askpass before using them, with –c. [6.3.3]
+
+## Agents and Security
+
+As we mentioned earlier, agents don’t expose private keys to SSH clients. Instead, they answer requests from clients using the keys. This approach is more secure than passing keys around, but it still has security concerns. It is important to understand these concerns before completely trusting the agent model:
+
+* Agents rely on external access control mechanisms.
+* Agents can be cracked.
+
+## Access control
+
+When your agent is loaded with private keys, a potential security issue arises. How does your agent distinguish between legitimate requests from your SSH clients and illegitimate requests from unauthorized sources? Since the agent speaks only to other processes on the same host, it uses the host’s existing security mechanisms. These vary from one operating system to another, but the four main mechanisms are:
+
+* File permissions
+* Client identification
+* Protected memory
+* Prompt-on-use
+
+***File permissions.*** Under Unix, the agent communicates with users via a named pipe (Unix-domain socket) in the filesystem, so the first line of defense is the file permissions on the socket. OpenSSH and Tectia keep agent sockets in a protected directory. OpenSSH’s socket is named /tmp/ssh-STRING/agent.N, where STRING is random text based on the agent’s process ID, and N is a number:
+
+```
+# OpenSSH
+$ ls -la /tmp/ssh-alHMKX4537
+drwx------ 2 smith smith 4096 Feb 4 13:40 .
+drwxrwxrwt 7 root root 4096 Feb 4 13:40 ..
+srwxr-xr-x 1 smith smith 0 Feb 4 13:40 agent.4537
+```
+
+while Tectia’s is named /tmp/ssh-USERNAME/ssh2-N-agent, where USERNAME is your username and N is again a number:
+
+```
+# Tectia
+$ ls -la /tmp/ssh-smith/
+drwx------ 2 smith smith 4096 Feb 4 13:40 .
+drwxrwxrwt 7 root root 4096 Feb 4 13:40 ..
+srw------- 1 smith smith 0 Feb 4 13:40 ssh2-4537-agent
+```
+
+The number N is usually one less than the process ID (pid) of the agent itself. This is because ssh-agent first creates the socket using its pid, then later starts another process that actually persists as the agent. In these examples, user smith has a socket for an agent which probably has PID 4536. The containing directory itself has mode 0700.
+
+This organization of a user’s sockets into a single directory is not only for neatness but also for security and portability, because different operating systems treat socket permissions in different ways. For example, Solaris appears to ignore them completely; even a socket with permission 000 (no access for anyone) accepts all connections. Linux respects socket permissions, but a write-only socket permits both reading and writing. To deal with such diverse implementations, SSH keeps your sockets in a directory owned by you, with directory permissions that forbid anyone else to access the sockets inside.
+
+Using a subdirectory of /tmp, rather than /tmp itself, also prevents a class of attacks called temp races. A temp-race attack takes advantage of race conditions inherent in the common setting of the “sticky” mode bit on the Unix /tmp directory, allowing anyone to create a file there, but only allowing deletion of files owned by the same uid as the deleting process.
+
+If you want to move the socket out of the default /tmp directory, use the –a option: [6.3.3.1]
+
+```
+# OpenSSH
+ssh-agent -a /private/ssh/mysocket
+SSH_AUTH_SOCK=/private/ssh/mysocket; export SSH_AUTH_SOCK;
+echo Agent pid 28320;
+```
+
+***Client identification.*** Some flavors of Unix allow one process to find out who’s on the other end of a named pipe: the peer’s process ID, user ID, etc. If this feature is available, an agent can verify that the client’s user ID matches its own.
+
+***Protected memory.*** The ssh-agent process won’t reveal keys via the agent protocol, but those keys are in its memory. A privileged user might be able to attach to the agent process and read the keys from its memory space, bypassing the usual Unix process separation. Some Unixes allow a process to limit or prevent this kind of external interference, so some agents make use of this feature.
+
+***Prompt-on-use.*** Some agents can query the user for permission each time a request comes in over the agent socket (e.g., OpenSSH ssh-add -c). If you use this feature and a window pops up unexpectedly asking about your agent, something’s wrong!
+
+## Agent Forwarding
+
+So far, our SSH clients have conversed with an SSH agent on the same machine. Using a feature called agent forwarding, clients can also communicate with agents on remote machines. This is both a convenience feature—permitting your clients on multiple machines to work with a single agent—and a means for avoiding some firewall-related problems.
+
+### A firewall example
+
+Suppose you want to connect from your home computer, H, to a computer at work, W. Like many corporate computers, W is behind a network firewall and not directly accessible from the Internet, so you can’t create an SSH connection from H to W. Hmm...what can you do? You call technical support and for once, they have good news. They say that your company maintains a gateway or “bastion” host, B, that is accessible from the Internet and runs an SSH server. This means you should be able to reach W by opening an SSH connection from H to B, and then from B to W, since the firewall permits SSH traffic. Tech support gives you an account on the bastion host B, and the problem seems to be solved...or is it?
+
+For security reasons, the company permits access to its computers only by public-key authentication. So, using your private key on home machine H, you successfully connect to bastion host B. And now you run into a roadblock: also for security reasons, the company prohibits users from storing SSH keys on the exposed bastion host B, since they can be stolen if B is hacked. That’s bad news, since the SSH client on B needs a key to connect to your work account on W. Your key is at home on H. (Figure 6-5 illustrates the problem.) What now? Use SSH agent forwarding.
+
+![Figure](ScreenshotsForNotes/Chapter6/Figure_6_5.PNG)
+
+SSH agent forwarding allows a program running on a remote host, such as B, to access your ssh-agent on H transparently, as if the agent were running on B. Thus, a remote SSH client running on B can now sign and decrypt data using your key on H, as shown in Figure 6-6. As a result, you can invoke an SSH session from B to your work machine W, solving the problem.
+
+![Figure](ScreenshotsForNotes/Chapter6/Figure_6_6.PNG)
+
+### How agent forwarding works
+
+Agent forwarding, like all SSH forwarding (Chapter 9), works “behind the scenes.” In this case, the key-related requests of an SSH client are forwarded across a separate, previously established SSH session to an agent holding the needed keys, shown in Figure 6-7. Let’s examine in detail the steps that occur.
+
+1. Suppose you’re logged onto machine X, and you invoke ssh to establish a remote terminal session on machine Y.
+
+```
+# On machine X:
+$ ssh Y
+```
+
+2. Assuming that agent forwarding is turned on, the client says to the SSH server, “I would like to request agent forwarding, please,” when establishing the connection.
+3. sshd on machine Y checks its configuration to see if it permits agent forwarding. Let’s assume that it’s enabled.
+4. sshd on machine Y sets up an interprocess communication (IPC) channel local to Y by creating some Unix domain sockets and setting some environment variables. [6.3.2.1] The resulting IPC mechanism is just like the one ssh-agent sets up. As a result, sshd is now prepared to pose as an SSH agent.
+5. Your SSH session is now established between X and Y.
+6. Next, from machine Y, you run another ssh command to establish an SSH session with a third machine, Z:
+
+```
+# On machine Y:
+$ ssh Z
+```
+
+7. This new ssh client now needs a key to make the connection to Z. It believes there’s an agent running on machine Y, because sshd on Y is posing as one. So, the client makes an authentication request over the agent IPC channel.
+8. sshd intercepts the request, masquerading as an agent, and says, “Hello, I’m the agent. What would you like to do?” The process is transparent: the client believes it’s talking to an agent.
+9. sshd then forwards the agent-related request back to the original machine, X, over the secure connection between X and Y. The agent on machine X receives the request and accesses your local key, and its response is forwarded back to sshd on machine Y.
+10. sshd on Y passes the response on to the client, and the connection to machine Z proceeds.
+
+Thanks to agent forwarding, you have transparent access from machine Y to any SSH keys back on machine X. Thus, any SSH clients on Y can access any hosts permitted by your keys on X. To test this, run this command on machine Y to list your keys:
+
+```
+# On machine Y:
+$ ssh-add -l
+```
+
+You see all keys that are loaded in your agent on machine X.
+
+It’s worth noting that the agent-forwarding relationship is transitive: if you repeat this process, making a chain of SSH connections from machine to machine, then clients on the final host still have access to your keys on the first host (X). (This assumes agent forwarding is permitted by sshd on each intermediate host.)
+
+### Enabling agent forwarding
+
+Before an SSH client can take advantage of agent forwarding, the feature must be turned on. SSH implementations vary in their default settings of this feature, and of course the system administrator can change it. If necessary, you can turn it on manually with the configuration keyword ForwardAgent in the client configuration file ~/.ssh/ config, giving a value of yes (the default) or no:
+
+```ForwardAgent yes```
+
+Likewise, you can use command-line options. In addition to the –o command-line option, which accepts any configuration keyword and its value:
+
+```$ ssh -o "ForwardAgent yes" ...```
+
+ssh accepts command-line options to turn on agent forwarding, even though it’s on by default:
+
+```
+# OpenSSH
+$ ssh -A ...
+
+# Tectia
+$ ssh +a ...
+```
+
+The option –a turns off agent forwarding:
+
+```$ ssh -a ...```
+
+## Multiple Identities
+
+Until now, we’ve assumed you have a single SSH identity that uniquely identifies you to an SSH server. You do have a default identity—our earlier ssh-add examples operated on it—but you may create as many other identities as you like.
+
+Why use several identities? After all, with a single SSH identity, you can connect to remote machines with a single passphrase. That’s very simple and convenient. In fact, most people can survive perfectly well with just one identity. Multiple identities have important uses, however:
+
+* *Additional security*
+    * If you use different SSH keys for different remote accounts, and one of your keys is cracked, only some of your remote accounts are vulnerable.
+* *Secure batch processes*
+    * Using an SSH key with an empty passphrase, you can create secure, automated processes between interacting computers, such as unattended backups. [11.1.2.2] However, you definitely don’t want your regular logins to use an unencrypted private key, so you should create a second key for this purpose.
+* *Different account settings*
+    * You can configure your remote account to respond differently based on which key is used for connecting. For example, you can make your Unix login session run different startup files depending on which key is used.
+* *Triggering remote programs*
+    * Your remote account can be set up to run specific programs when an alternative key is used, via forced commands. [8.2.3]
+
+In order to use multiple identities, you need to know how to switch between them. There are two ways: manually, and automatically with an agent.
+
+## Switching identities manually
+
+ssh and scp let you switch your identity with the –i command-line option and the IdentityFile configuration keyword. For either of these techniques, you provide the name of your desired private-key file (OpenSSH) or identification file (Tectia). [7.4.2] Table 6-3 displays a summary of the syntax.
+
+![Table](ScreenshotsForNotes/Chapter6/Table_6_3.PNG)
